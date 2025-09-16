@@ -7,7 +7,7 @@ async function loadShaderFile(url) {
 
 async function main() {
     const canvas = document.getElementById('canvas');
-    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    const gl = canvas.getContext('webgl2') || gl.getContext('webgl');
     
     if (!gl) {
         alert('WebGL not supported');
@@ -61,7 +61,6 @@ async function main() {
     const uNoiseAmpLocation = gl.getUniformLocation(program, 'uNoiseAmp');
     const uSpeedLocation = gl.getUniformLocation(program, 'uSpeed');
     const uGlowIntensityLocation = gl.getUniformLocation(program, 'uGlowIntensity');
-    const uBaseColorLocation = gl.getUniformLocation(program, 'uBaseColor');
     const uFogDensityLocation = gl.getUniformLocation(program, 'uFogDensity');
     const uLightIntensityLocation = gl.getUniformLocation(program, 'uLightIntensity');
     const uCausticStrengthLocation = gl.getUniformLocation(program, 'uCausticStrength');
@@ -69,6 +68,25 @@ async function main() {
     const uWaveSpeedLocation = gl.getUniformLocation(program, 'uWaveSpeed');
     const uSpecularShininessLocation = gl.getUniformLocation(program, 'uSpecularShininess');
     const uTunnelTypeLocation = gl.getUniformLocation(program, 'uTunnelType');
+    const uFocalLengthLocation = gl.getUniformLocation(program, 'uFocalLength');
+    const uBumpFactorLocation = gl.getUniformLocation(program, 'uBumpFactor');
+    const uTunnelBendLocation = gl.getUniformLocation(program, 'uTunnelBend');
+    const uCapsuleHeightLocation = gl.getUniformLocation(program, 'uCapsuleHeight');
+    const uCapsuleRadiusLocation = gl.getUniformLocation(program, 'uCapsuleRadius');
+    const uCapsuleColorLocation = gl.getUniformLocation(program, 'uCapsuleColor');
+    const uCapsuleShininessLocation = gl.getUniformLocation(program, 'uCapsuleShininess');
+    const uCapsuleDiffuseLocation = gl.getUniformLocation(program, 'uCapsuleDiffuse');
+    const uAnimateBendLocation = gl.getUniformLocation(program, 'uAnimateBend');
+    const uBendAnimationSpeedLocation = gl.getUniformLocation(program, 'uBendAnimationSpeed');
+    const uBendAnimationAmplitudeLocation = gl.getUniformLocation(program, 'uBendAnimationAmplitude');
+    const uAnimateRadiusLocation = gl.getUniformLocation(program, 'uAnimateRadius');
+    const uRadiusAnimationSpeedLocation = gl.getUniformLocation(program, 'uRadiusAnimationSpeed');
+    const uRadiusAnimationAmplitudeLocation = gl.getUniformLocation(program, 'uRadiusAnimationAmplitude');
+    const uChromaticAberrationStrengthLocation = gl.getUniformLocation(program, 'uChromaticAberrationStrength');
+    const uNumCapsulesLocation = gl.getUniformLocation(program, 'uNumCapsules');
+    const uCapsuleSpacingLocation = gl.getUniformLocation(program, 'uCapsuleSpacing');
+    const uCapsuleSpeedVariationLocation = gl.getUniformLocation(program, 'uCapsuleSpeedVariation');
+    const uCapsuleColorVariationLocation = gl.getUniformLocation(program, 'uCapsuleColorVariation');
 
     // Create buffer for full-screen quad
     const positionBuffer = gl.createBuffer();
@@ -85,63 +103,126 @@ async function main() {
     // Get attribute location
     const positionLocation = gl.getAttribLocation(program, 'position');
 
-    // GUI setup with additional tunnel type control
+    // GUI setup
     const params = {
         radius: 1.5,
         noiseAmplitude: 0.4,
         speed: 1.0,
         glowIntensity: 1.0,
-        baseColor: [0, 128, 255], // Default to blue for underwater
         fogDensity: 0.05,
         lightIntensity: 1.0,
         causticStrength: 1.0,
         bubbleDensity: 1.0,
         waveSpeed: 0.1,
         specularShininess: 64.0,
-        tunnelType: 'Underwater' // New control: Underwater or Clouds
+        tunnelType: 'Underwater',
+        focalLength: 1.2,
+        bumpFactor: 0.15,
+        tunnelBend: 0.5,
+        capsuleHeight: 1.0,
+        capsuleRadius: 0.3,
+        capsuleColor: [200, 200, 200],
+        capsuleShininess: 256.0,
+        capsuleDiffuse: 0.8,
+        animateBend: true,
+        bendAnimationSpeed: 0.5,
+        bendAnimationAmplitude: 0.5,
+        animateRadius: true,
+        radiusAnimationSpeed: 0.5,
+        radiusAnimationAmplitude: 0.2,
+        chromaticAberrationStrength: 0.01,
+        numCapsules: 3,
+        capsuleSpacing: 5.0,
+        capsuleSpeedVariation: 0.2,
+        capsuleColorVariation: 0.5
     };
 
     const gui = new GUI();
-    gui.add(params, 'tunnelType', ['Underwater', 'Clouds']).name('Tunnel Type').onChange((value) => {
-        // Update baseColor based on tunnel type
-        params.baseColor = value === 'Underwater' ? [0, 128, 255] : [204, 217, 230];
-        gui.controllers.forEach(controller => {
-            if (controller.property === 'baseColor') controller.updateDisplay();
-        });
-        updateUniforms();
-    });
-    gui.add(params, 'radius', 0.5, 3.0, 0.1).name('Tunnel Radius').onChange(() => updateUniforms());
-    gui.add(params, 'noiseAmplitude', 0.0, 1.0, 0.01).name('Noise Amplitude').onChange(() => updateUniforms());
-    gui.add(params, 'speed', 0.1, 2.0, 0.1).name('Camera Speed').onChange(() => updateUniforms());
-    gui.add(params, 'glowIntensity', 0.0, 2.0, 0.1).name('Glow Intensity').onChange(() => updateUniforms());
-    gui.addColor(params, 'baseColor').name('Base Color').onChange((value) => {
-        console.log('Base color changed to:', value);
-        updateUniforms();
-    });
-    gui.add(params, 'fogDensity', 0.01, 0.2, 0.01).name('Fog Density').onChange(() => updateUniforms());
-    gui.add(params, 'lightIntensity', 0.5, 2.0, 0.1).name('Light Intensity').onChange(() => updateUniforms());
-    gui.add(params, 'causticStrength', 0.0, 2.0, 0.1).name('Caustic Strength').onChange(() => updateUniforms());
-    gui.add(params, 'bubbleDensity', 0.0, 2.0, 0.1).name('Bubble Density').onChange(() => updateUniforms());
-    gui.add(params, 'waveSpeed', 0.05, 0.5, 0.01).name('Wave Speed').onChange(() => updateUniforms());
-    gui.add(params, 'specularShininess', 10.0, 100.0, 1.0).name('Specular Shininess').onChange(() => updateUniforms());
+    const tunnelFolder = gui.addFolder('Tunnel');
+    tunnelFolder.add(params, 'tunnelType', ['Underwater', 'Clouds', 'Lava']).name('Type').onChange(() => updateUniforms());
+    tunnelFolder.add(params, 'radius', 0.5, 3.0, 0.1).name('Radius').onChange(() => updateUniforms());
+    tunnelFolder.add(params, 'tunnelBend', 0.0, 2.0, 0.1).name('Bend').onChange(() => updateUniforms());
+    tunnelFolder.add(params, 'speed', 0.1, 2.0, 0.1).name('Speed').onChange(() => updateUniforms());
+
+    const animationFolder = tunnelFolder.addFolder('Animation');
+    animationFolder.add(params, 'animateBend').name('Animate Bend').onChange(() => updateUniforms());
+    animationFolder.add(params, 'bendAnimationSpeed', 0.1, 2.0, 0.1).name('Bend Speed').onChange(() => updateUniforms());
+    animationFolder.add(params, 'bendAnimationAmplitude', 0.1, 1.0, 0.1).name('Bend Amplitude').onChange(() => updateUniforms());
+    animationFolder.add(params, 'animateRadius').name('Animate Radius').onChange(() => updateUniforms());
+    animationFolder.add(params, 'radiusAnimationSpeed', 0.1, 2.0, 0.1).name('Radius Speed').onChange(() => updateUniforms());
+    animationFolder.add(params, 'radiusAnimationAmplitude', 0.1, 1.0, 0.1).name('Radius Amplitude').onChange(() => updateUniforms());
+
+    const effectsFolder = gui.addFolder('Effects');
+    effectsFolder.add(params, 'noiseAmplitude', 0.0, 1.0, 0.01).name('Noise Amplitude').onChange(() => updateUniforms());
+    effectsFolder.add(params, 'waveSpeed', 0.05, 0.5, 0.01).name('Wave Speed').onChange(() => updateUniforms());
+    effectsFolder.add(params, 'fogDensity', 0.01, 0.2, 0.01).name('Fog Density').onChange(() => updateUniforms());
+    effectsFolder.add(params, 'glowIntensity', 0.0, 2.0, 0.1).name('Glow Intensity').onChange(() => updateUniforms());
+
+    const lightingFolder = gui.addFolder('Lighting');
+    lightingFolder.add(params, 'lightIntensity', 0.5, 2.0, 0.1).name('Light Intensity').onChange(() => updateUniforms());
+    lightingFolder.add(params, 'specularShininess', 10.0, 100.0, 1.0).name('Tunnel Shininess').onChange(() => updateUniforms());
+    lightingFolder.add(params, 'bumpFactor', 0.0, 0.5, 0.01).name('Bump Factor').onChange(() => updateUniforms());
+
+    const underwaterFolder = gui.addFolder('Underwater');
+    underwaterFolder.add(params, 'causticStrength', 0.0, 2.0, 0.1).name('Caustic Strength').onChange(() => updateUniforms());
+    underwaterFolder.add(params, 'bubbleDensity', 0.0, 2.0, 0.1).name('Bubble Density').onChange(() => updateUniforms());
+
+    const cameraFolder = gui.addFolder('Camera');
+    cameraFolder.add(params, 'focalLength', 0.5, 3.0, 0.1).name('Focal Length').onChange(() => updateUniforms());
+
+    const capsuleFolder = gui.addFolder('Capsule');
+    capsuleFolder.add(params, 'capsuleHeight', 0.1, 3.0, 0.1).name('Height').onChange(() => updateUniforms());
+    capsuleFolder.add(params, 'capsuleRadius', 0.1, 1.0, 0.05).name('Radius').onChange(() => updateUniforms());
+    capsuleFolder.addColor(params, 'capsuleColor').name('Color').onChange(() => updateUniforms());
+    capsuleFolder.add(params, 'capsuleShininess', 8.0, 1024.0, 8.0).name('Shininess').onChange(() => updateUniforms());
+    capsuleFolder.add(params, 'capsuleDiffuse', 0.0, 1.0, 0.05).name('Diffuse').onChange(() => updateUniforms());
+    capsuleFolder.add(params, 'numCapsules', 1, 10, 1).name('Number of Capsules').onChange(() => updateUniforms());
+    capsuleFolder.add(params, 'capsuleSpacing', 1.0, 20.0, 0.5).name('Capsule Spacing').onChange(() => updateUniforms());
+    capsuleFolder.add(params, 'capsuleSpeedVariation', 0.0, 1.0, 0.05).name('Speed Variation').onChange(() => updateUniforms());
+    capsuleFolder.add(params, 'capsuleColorVariation', 0.0, 1.0, 0.05).name('Color Variation').onChange(() => updateUniforms());
+
+    const postProcessingFolder = gui.addFolder('Post-Processing');
+    postProcessingFolder.add(params, 'chromaticAberrationStrength', 0.0, 0.1, 0.001).name('Chromatic Aberration').onChange(() => updateUniforms());
 
     function updateUniforms() {
         gl.uniform1f(uRadiusLocation, params.radius);
         gl.uniform1f(uNoiseAmpLocation, params.noiseAmplitude);
         gl.uniform1f(uSpeedLocation, params.speed);
         gl.uniform1f(uGlowIntensityLocation, params.glowIntensity);
-        gl.uniform3f(uBaseColorLocation, 
-            params.baseColor[0] / 255.0, 
-            params.baseColor[1] / 255.0, 
-            params.baseColor[2] / 255.0
-        );
         gl.uniform1f(uFogDensityLocation, params.fogDensity);
         gl.uniform1f(uLightIntensityLocation, params.lightIntensity);
         gl.uniform1f(uCausticStrengthLocation, params.causticStrength);
         gl.uniform1f(uBubbleDensityLocation, params.bubbleDensity);
         gl.uniform1f(uWaveSpeedLocation, params.waveSpeed);
         gl.uniform1f(uSpecularShininessLocation, params.specularShininess);
-        gl.uniform1f(uTunnelTypeLocation, params.tunnelType === 'Underwater' ? 0.0 : 1.0);
+        let tunnelTypeValue;
+        if (params.tunnelType === 'Underwater') {
+            tunnelTypeValue = 0.0;
+        } else if (params.tunnelType === 'Clouds') {
+            tunnelTypeValue = 1.0;
+        } else { // Lava
+            tunnelTypeValue = 2.0;
+        }
+        gl.uniform1f(uTunnelTypeLocation, tunnelTypeValue);
+        gl.uniform1f(uFocalLengthLocation, params.focalLength);
+        gl.uniform1f(uBumpFactorLocation, params.bumpFactor);
+        gl.uniform1f(uTunnelBendLocation, params.tunnelBend);
+        gl.uniform1f(uCapsuleHeightLocation, params.capsuleHeight);
+        gl.uniform1f(uCapsuleRadiusLocation, params.capsuleRadius);
+        gl.uniform3f(uCapsuleColorLocation, params.capsuleColor[0] / 255.0, params.capsuleColor[1] / 255.0, params.capsuleColor[2] / 255.0);
+        gl.uniform1f(uCapsuleShininessLocation, params.capsuleShininess);
+        gl.uniform1f(uCapsuleDiffuseLocation, params.capsuleDiffuse);
+        gl.uniform1f(uAnimateBendLocation, params.animateBend ? 1.0 : 0.0);
+        gl.uniform1f(uBendAnimationSpeedLocation, params.bendAnimationSpeed);
+        gl.uniform1f(uBendAnimationAmplitudeLocation, params.bendAnimationAmplitude);
+        gl.uniform1f(uAnimateRadiusLocation, params.animateRadius ? 1.0 : 0.0);
+        gl.uniform1f(uRadiusAnimationSpeedLocation, params.radiusAnimationSpeed);
+        gl.uniform1f(uRadiusAnimationAmplitudeLocation, params.radiusAnimationAmplitude);
+        gl.uniform1f(uChromaticAberrationStrengthLocation, params.chromaticAberrationStrength);
+        gl.uniform1i(uNumCapsulesLocation, params.numCapsules);
+        gl.uniform1f(uCapsuleSpacingLocation, params.capsuleSpacing);
+        gl.uniform1f(uCapsuleSpeedVariationLocation, params.capsuleSpeedVariation);
+        gl.uniform1f(uCapsuleColorVariationLocation, params.capsuleColorVariation);
     }
 
     // Resize canvas to match display size
