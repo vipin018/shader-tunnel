@@ -6,16 +6,19 @@ uniform float uRadius;
 uniform float uNoiseAmp;
 uniform float uSpeed;
 uniform float uGlowIntensity;
-uniform vec3 uWaterColor;
+uniform vec3 uBaseColor;
 uniform float uFogDensity;
 uniform float uLightIntensity;
 uniform float uCausticStrength;
 uniform float uBubbleDensity;
+uniform float uWaveSpeed;
+uniform float uSpecularShininess;
+uniform float uTunnelType;
 uniform sampler2D iChannel0;
 
 #define PI 3.14159265
 
-// Noise function for water-like randomness
+// Noise function for randomness
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
@@ -43,7 +46,7 @@ float fbm(vec3 p) {
     return v;
 }
 
-// Simple caustic noise simulation
+// Caustic noise simulation (used for underwater)
 float caustics(vec3 p) {
     float t = iTime * 0.5;
     float n1 = fbm(p * 0.1 + vec3(t * 0.1, t * 0.05, t * 0.02));
@@ -51,7 +54,7 @@ float caustics(vec3 p) {
     return (n1 * n2) * uCausticStrength * 0.5;
 }
 
-// Bubble simulation using noise
+// Bubble simulation (used for underwater)
 float bubbles(vec3 p) {
     float bub = sin(p.z * 10.0 + iTime * 2.0) * 0.5 + 0.5;
     bub *= fbm(p * 2.0 + vec3(0.0, iTime * 0.5, 0.0)) * uBubbleDensity;
@@ -63,10 +66,12 @@ vec2 path(float z) {
     return vec2(0.5 * sin(z * 0.5), 0.5 * sin(z * 0.3));
 }
 
-// Distance to tunnel with water-like perturbations
+// Distance to tunnel with perturbations
 float map(vec3 p) {
     float d = -length(p.xy - path(p.z)) + uRadius;
-    d += uNoiseAmp * fbm(p * 0.3 + iTime * 0.1);
+    // Adjust noise amplitude for clouds (softer) vs underwater (sharper)
+    float noiseScale = mix(uNoiseAmp, uNoiseAmp * 1.5, uTunnelType);
+    d += noiseScale * fbm(p * mix(0.3, 0.5, uTunnelType) + iTime * uWaveSpeed);
     return d;
 }
 
@@ -82,13 +87,13 @@ vec3 normal(vec3 p) {
     return normalize(n);
 }
 
-// Water-like bump effect
+// Bump effect
 float bumpFunction(vec3 p) {
-    float n = fbm(p * 1.0 + iTime * 0.2);
-    return n * n * 0.3;
+    float n = fbm(p * mix(1.0, 0.8, uTunnelType) + iTime * uWaveSpeed);
+    return n * n * mix(0.3, 0.5, uTunnelType); // Stronger bumps for clouds
 }
 
-// Modified bump normal for water-like surface
+// Modified bump normal
 vec3 bumpNormal(vec3 p, vec3 n, float bumpFactor) {
     vec3 e = vec3(0.02, 0.0, 0.0);
     float f = bumpFunction(p);
@@ -122,9 +127,9 @@ void main() {
     float fl = 1.2;
     vec3 rd = normalize(fwd + fl * (uv.x * right + uv.y * up));
     
-    // Underwater glow
+    // Glow, adjusted for tunnel type
     float glow = 0.0;
-    vec3 glowCol = uWaterColor * uGlowIntensity;
+    vec3 glowCol = uBaseColor * uGlowIntensity;
     
     // Raymarching
     float t = 0.0;
@@ -134,32 +139,37 @@ void main() {
         vec3 p = ro + t * rd;
         float d = map(p);
         
-        // Add soft glow with bubbles
-        glow += exp(-d * 6.0) * 0.01 + bubbles(p) * 0.005;
+        // Add glow, with bubbles for underwater only
+        glow += exp(-d * 6.0) * 0.01;
+        if (uTunnelType < 0.5) { // Underwater
+            glow += bubbles(p) * 0.005;
+        }
         
         if (d < 0.02) {
             vec3 n = normal(p);
-            vec3 lightDir = normalize(vec3(0.0, 1.0, -0.5));
-            n = bumpNormal(p, n, 0.15);
+            vec3 lightDir = normalize(vec3(0.0, 1.0, mix(-0.5, 0.5, uTunnelType))); // Different light for clouds
+            n = bumpNormal(p, n, mix(0.15, 0.1, uTunnelType)); // Softer bumps for clouds
             
-            // Emphasize water color
-            vec3 baseCol = uWaterColor;
-            baseCol += 0.1 * fbm(p * 0.5) * uWaterColor;
-            baseCol += caustics(p) * uWaterColor * 0.5;
+            // Base color with effects
+            vec3 baseCol = uBaseColor;
+            baseCol += 0.1 * fbm(p * 0.5) * uBaseColor;
+            if (uTunnelType < 0.5) { // Underwater: add caustics
+                baseCol += caustics(p) * uBaseColor * 0.5;
+            }
             
             // Diffuse lighting
-            float diffuseL = max(dot(n, lightDir), 0.0) * 0.5 * uLightIntensity + 0.3;
+            float diffuseL = max(dot(n, lightDir), 0.0) * 0.5 * uLightIntensity + mix(0.3, 0.4, uTunnelType);
             col += diffuseL * baseCol;
             
-            // Specular for water shimmer
+            // Specular lighting
             vec3 h = normalize(lightDir - rd);
-            float specL = pow(max(dot(n, h), 0.0), 64.0) * 0.4 * uLightIntensity;
-            col += specL * vec3(1.0, 1.0, 0.8);
+            float specL = pow(max(dot(n, h), 0.0), uSpecularShininess) * 0.4 * uLightIntensity;
+            col += specL * mix(vec3(1.0, 1.0, 0.8), vec3(1.0), uTunnelType); // Whiter specular for clouds
             
-            // Reflection for watery surface
+            // Reflection
             vec3 r = reflect(rd, n);
-            vec3 reflCol = uWaterColor * 0.3 * (0.5 + 0.5 * fbm(r * 0.5));
-            col = mix(col, reflCol, 0.3);
+            vec3 reflCol = uBaseColor * 0.3 * (0.5 + 0.5 * fbm(r * 0.5));
+            col = mix(col, reflCol, mix(0.3, 0.2, uTunnelType));
             
             break;
         }
@@ -167,11 +177,11 @@ void main() {
         t += d * 0.8;
     }
     
-    // Add underwater glow
+    // Add glow
     col += glowCol * glow;
     
-    // Fog effect tinted by water color
-    vec3 fogCol = uWaterColor * 0.5;
+    // Fog effect tinted by base color
+    vec3 fogCol = uBaseColor * mix(0.5, 0.8, uTunnelType);
     col = mix(col, fogCol, 1.0 - exp(-t * uFogDensity));
     
     // Gamma correction

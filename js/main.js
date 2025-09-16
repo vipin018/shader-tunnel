@@ -61,11 +61,14 @@ async function main() {
     const uNoiseAmpLocation = gl.getUniformLocation(program, 'uNoiseAmp');
     const uSpeedLocation = gl.getUniformLocation(program, 'uSpeed');
     const uGlowIntensityLocation = gl.getUniformLocation(program, 'uGlowIntensity');
-    const uWaterColorLocation = gl.getUniformLocation(program, 'uWaterColor');
+    const uBaseColorLocation = gl.getUniformLocation(program, 'uBaseColor');
     const uFogDensityLocation = gl.getUniformLocation(program, 'uFogDensity');
     const uLightIntensityLocation = gl.getUniformLocation(program, 'uLightIntensity');
     const uCausticStrengthLocation = gl.getUniformLocation(program, 'uCausticStrength');
     const uBubbleDensityLocation = gl.getUniformLocation(program, 'uBubbleDensity');
+    const uWaveSpeedLocation = gl.getUniformLocation(program, 'uWaveSpeed');
+    const uSpecularShininessLocation = gl.getUniformLocation(program, 'uSpecularShininess');
+    const uTunnelTypeLocation = gl.getUniformLocation(program, 'uTunnelType');
 
     // Create buffer for full-screen quad
     const positionBuffer = gl.createBuffer();
@@ -82,47 +85,63 @@ async function main() {
     // Get attribute location
     const positionLocation = gl.getAttribLocation(program, 'position');
 
-    // GUI setup
+    // GUI setup with additional tunnel type control
     const params = {
         radius: 1.5,
         noiseAmplitude: 0.4,
         speed: 1.0,
         glowIntensity: 1.0,
-        waterColor: [0, 128, 255], // RGB values (0-255) for blue water vec3(0.0, 0.5, 1.0)
+        baseColor: [0, 128, 255], // Default to blue for underwater
         fogDensity: 0.05,
         lightIntensity: 1.0,
         causticStrength: 1.0,
-        bubbleDensity: 1.0
+        bubbleDensity: 1.0,
+        waveSpeed: 0.1,
+        specularShininess: 64.0,
+        tunnelType: 'Underwater' // New control: Underwater or Clouds
     };
 
     const gui = new GUI();
+    gui.add(params, 'tunnelType', ['Underwater', 'Clouds']).name('Tunnel Type').onChange((value) => {
+        // Update baseColor based on tunnel type
+        params.baseColor = value === 'Underwater' ? [0, 128, 255] : [204, 217, 230];
+        gui.controllers.forEach(controller => {
+            if (controller.property === 'baseColor') controller.updateDisplay();
+        });
+        updateUniforms();
+    });
     gui.add(params, 'radius', 0.5, 3.0, 0.1).name('Tunnel Radius').onChange(() => updateUniforms());
     gui.add(params, 'noiseAmplitude', 0.0, 1.0, 0.01).name('Noise Amplitude').onChange(() => updateUniforms());
     gui.add(params, 'speed', 0.1, 2.0, 0.1).name('Camera Speed').onChange(() => updateUniforms());
     gui.add(params, 'glowIntensity', 0.0, 2.0, 0.1).name('Glow Intensity').onChange(() => updateUniforms());
-    gui.addColor(params, 'waterColor').name('Water Color').onChange((value) => {
-        console.log('Water color changed to:', value);
+    gui.addColor(params, 'baseColor').name('Base Color').onChange((value) => {
+        console.log('Base color changed to:', value);
         updateUniforms();
     });
     gui.add(params, 'fogDensity', 0.01, 0.2, 0.01).name('Fog Density').onChange(() => updateUniforms());
     gui.add(params, 'lightIntensity', 0.5, 2.0, 0.1).name('Light Intensity').onChange(() => updateUniforms());
     gui.add(params, 'causticStrength', 0.0, 2.0, 0.1).name('Caustic Strength').onChange(() => updateUniforms());
     gui.add(params, 'bubbleDensity', 0.0, 2.0, 0.1).name('Bubble Density').onChange(() => updateUniforms());
+    gui.add(params, 'waveSpeed', 0.05, 0.5, 0.01).name('Wave Speed').onChange(() => updateUniforms());
+    gui.add(params, 'specularShininess', 10.0, 100.0, 1.0).name('Specular Shininess').onChange(() => updateUniforms());
 
     function updateUniforms() {
         gl.uniform1f(uRadiusLocation, params.radius);
         gl.uniform1f(uNoiseAmpLocation, params.noiseAmplitude);
         gl.uniform1f(uSpeedLocation, params.speed);
         gl.uniform1f(uGlowIntensityLocation, params.glowIntensity);
-        gl.uniform3f(uWaterColorLocation, 
-            params.waterColor[0] / 255.0, 
-            params.waterColor[1] / 255.0, 
-            params.waterColor[2] / 255.0
+        gl.uniform3f(uBaseColorLocation, 
+            params.baseColor[0] / 255.0, 
+            params.baseColor[1] / 255.0, 
+            params.baseColor[2] / 255.0
         );
         gl.uniform1f(uFogDensityLocation, params.fogDensity);
         gl.uniform1f(uLightIntensityLocation, params.lightIntensity);
         gl.uniform1f(uCausticStrengthLocation, params.causticStrength);
         gl.uniform1f(uBubbleDensityLocation, params.bubbleDensity);
+        gl.uniform1f(uWaveSpeedLocation, params.waveSpeed);
+        gl.uniform1f(uSpecularShininessLocation, params.specularShininess);
+        gl.uniform1f(uTunnelTypeLocation, params.tunnelType === 'Underwater' ? 0.0 : 1.0);
     }
 
     // Resize canvas to match display size
